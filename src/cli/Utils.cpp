@@ -303,7 +303,7 @@ namespace Utils
                 continue;
             }
 
-            if (clipProcess->write(text.toLatin1()) == -1) {
+            if (clipProcess->write(text.toUtf8()) == -1) {
                 qDebug("Unable to write to process : %s", qPrintable(clipProcess->errorString()));
             }
             clipProcess->waitForBytesWritten();

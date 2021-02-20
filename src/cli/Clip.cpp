@@ -50,7 +50,9 @@ Clip::Clip()
     positionalArguments.append(
         {QString("entry"), QObject::tr("Path of the entry to clip.", "clip = copy to clipboard"), QString("")});
     optionalArguments.append(
-        {QString("timeout"), QObject::tr("Timeout in seconds before clearing the clipboard."), QString("[timeout]")});
+        {QString("timeout"),
+         QObject::tr("Timeout before clearing the clipboard (default is 10 seconds, set to 0 for unlimited)."),
+         QString("[timeout]")});
 }
 
 int Clip::executeWithDatabase(QSharedPointer<Database> database, QSharedPointer<QCommandLineParser> parser)
@@ -59,13 +61,18 @@ int Clip::executeWithDatabase(QSharedPointer<Database> database, QSharedPointer<
     auto& err = Utils::STDERR;
 
     const QStringList args = parser->positionalArguments();
-    QString bestEntryPath;
 
-    QString timeout;
+    auto timeout = 10;
     if (args.size() == 3) {
-        timeout = args.at(2);
+        bool ok;
+        timeout = args.at(2).toInt(&ok);
+        if (!ok) {
+            err << QObject::tr("Invalid timeout value %1.").arg(args.at(2)) << endl;
+            return EXIT_FAILURE;
+        }
     }
 
+    QString entryPath;
     if (parser->isSet(Clip::BestMatchOption)) {
         QStringList results = database->rootGroup()->locate(args.at(1));
         if (results.count() > 1) {
@@ -75,24 +82,14 @@ int Clip::executeWithDatabase(QSharedPointer<Database> database, QSharedPointer<
             }
             return EXIT_FAILURE;
         } else {
-            bestEntryPath = (results.isEmpty()) ? args.at(1) : results[0];
-            out << QObject::tr("Used matching entry: %1").arg(bestEntryPath) << endl;
+            entryPath = (results.isEmpty()) ? args.at(1) : results[0];
+            out << QObject::tr("Used matching entry: %1").arg(entryPath) << endl;
         }
     } else {
-        bestEntryPath = args.at(1);
+        entryPath = args.at(1);
     }
 
-    const QString& entryPath = bestEntryPath;
-
-    int timeoutSeconds = 0;
-    if (!timeout.isEmpty() && timeout.toInt() <= 0) {
-        err << QObject::tr("Invalid timeout value %1.").arg(timeout) << endl;
-        return EXIT_FAILURE;
-    } else if (!timeout.isEmpty()) {
-        timeoutSeconds = timeout.toInt();
-    }
-
-    Entry* entry = database->rootGroup()->findEntryByPath(entryPath);
+    auto* entry = database->rootGroup()->findEntryByPath(entryPath);
     if (!entry) {
         err << QObject::tr("Entry %1 not found.").arg(entryPath) << endl;
         return EXIT_FAILURE;
@@ -140,17 +137,17 @@ int Clip::executeWithDatabase(QSharedPointer<Database> database, QSharedPointer<
 
     out << QObject::tr("Entry's \"%1\" attribute copied to the clipboard!").arg(selectedAttribute) << endl;
 
-    if (!timeoutSeconds) {
+    if (timeout <= 0) {
         return exitCode;
     }
 
     QString lastLine = "";
-    while (timeoutSeconds > 0) {
+    while (timeout > 0) {
         out << '\r' << QString(lastLine.size(), ' ') << '\r';
-        lastLine = QObject::tr("Clearing the clipboard in %1 second(s)…", "", timeoutSeconds).arg(timeoutSeconds);
+        lastLine = QObject::tr("Clearing the clipboard in %1 second(s)…", "", timeout).arg(timeout);
         out << lastLine << flush;
         Tools::sleep(1000);
-        --timeoutSeconds;
+        --timeout;
     }
     Utils::clipText("");
     out << '\r' << QString(lastLine.size(), ' ') << '\r';
